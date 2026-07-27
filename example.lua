@@ -1,70 +1,128 @@
 --[[
-  HPC Simulation Configuration Validator Example (example.lua)
-  Demonstrates validating a complex, nested Lua simulation configuration
-  against a schema before feeding data to a Fortran backend.
+  Enhanced HPC Simulation Configuration Validator Example (example.lua)
+  Demonstrates validating complex Lua configs, array validation, custom rules,
+  and auto-generating Markdown schema documentation for users.
 --]]
 
 local validator = require("validator")
 
--- 1. Define the Schema for the HPC Simulation
+-- 1. Define the Schema for the HPC Simulation with Metadata & Array/Custom Rules
 local hpc_schema = {
     simulation_name = {
         type = "string",
-        required = true
+        required = true,
+        description = "Unique title identifier for the simulation run"
     },
     time_step = {
         type = "number",
         required = true,
         min = 1e-6,
-        max = 1.0
+        max = 1.0,
+        default = 0.01,
+        units = "s",
+        description = "Integration time step size"
     },
     max_steps = {
         type = "integer",
         required = true,
         min = 1,
-        max = 1000000
+        max = 1000000,
+        default = 10000,
+        units = "dimensionless",
+        description = "Maximum number of time steps to compute"
+    },
+    -- List/Array of boundary condition tables
+    boundary_conditions = {
+        type = "table",
+        required = true,
+        description = "List of boundary conditions for the physical domain",
+        array_of = {
+            type = "table",
+            schema = {
+                name = {
+                    type = "string",
+                    required = true,
+                    description = "Boundary patch identifier"
+                },
+                type = {
+                    type = "string",
+                    required = true,
+                    enum = {"dirichlet", "neumann", "periodic"},
+                    description = "Boundary condition mathematical type"
+                },
+                value = {
+                    type = "number",
+                    required = true,
+                    description = "Prescribed value at boundary"
+                }
+            }
+        }
     },
     -- Optional parent table for Physics parameters
     physics = {
         type = "table",
-        required = false, -- Optional parent
+        required = false,
+        description = "Physical environment and fluid parameters",
         schema = {
             dimension = {
                 type = "integer",
                 required = true,
                 min = 1,
-                max = 3
+                max = 3,
+                default = 3,
+                description = "Spatial dimension of the simulation (1, 2, or 3)"
             },
             fluid = {
                 type = "table",
-                required = true, -- Required child if 'physics' is present
+                required = true,
+                description = "Fluid physical properties",
                 schema = {
-                    density = { type = "number", required = true, min = 0.0 },
-                    viscosity = { type = "number", required = true, min = 0.0 }
+                    density = {
+                        type = "number",
+                        required = true,
+                        min = 0.0,
+                        units = "kg/m^3",
+                        description = "Fluid mass density"
+                    },
+                    viscosity = {
+                        type = "number",
+                        required = true,
+                        min = 0.0,
+                        units = "Pa.s",
+                        description = "Dynamic viscosity of the fluid"
+                    }
                 }
             }
         }
     },
-    -- Optional parent table for Linear Solver settings
+    -- Optional parent table for Linear Solver settings with a Custom Rule
     solver = {
         type = "table",
         required = false,
+        description = "Iterative linear system solver settings",
         schema = {
             method = {
                 type = "string",
                 required = true,
-                enum = {"cg", "gmres", "bicgstab"}
+                enum = {"cg", "gmres", "bicgstab"},
+                default = "gmres",
+                description = "Iterative Krylov solver method"
             },
             tolerance = {
                 type = "number",
                 required = true,
                 min = 1e-15,
-                max = 1e-2
-            },
-            preconditioner = {
-                type = "string",
-                required = false,
-                enum = {"none", "jacobi", "ilu", "amg"}
+                max = 1e-2,
+                default = 1e-8,
+                units = "dimensionless",
+                description = "Convergence residual tolerance",
+                -- Custom validation function rule
+                custom = function(val, path)
+                    if val > 1e-3 then
+                        return false, string.format("Warning at '%s': tolerance %g is unusually loose for high-precision HPC", path, val)
+                    end
+                    return true
+                end
             }
         }
     }
@@ -93,11 +151,15 @@ local function run_demo(label, config)
     end
 end
 
--- Scenario 1: Valid Configuration with all fields populated
+-- Scenario 1: Valid Configuration with all fields and arrays
 local valid_config = {
     simulation_name = "Couette Flow 3D",
     time_step = 0.001,
     max_steps = 10000,
+    boundary_conditions = {
+        { name = "inlet", type = "dirichlet", value = 1.0 },
+        { name = "outlet", type = "neumann", value = 0.0 }
+    },
     physics = {
         dimension = 3,
         fluid = {
@@ -107,36 +169,30 @@ local valid_config = {
     },
     solver = {
         method = "gmres",
-        tolerance = 1e-8,
-        preconditioner = "ilu"
+        tolerance = 1e-8
     }
 }
 
--- Scenario 2: Valid Minimal Config (Optional parent 'solver' omitted)
-local minimal_valid_config = {
-    simulation_name = "Minimal Test",
-    time_step = 0.05,
-    max_steps = 500
-}
-
--- Scenario 3: Config with multiple bugs (Typo, Type mismatch, Min/Max out of bounds, Missing required sub-field)
+-- Scenario 2: Invalid Configuration (Array errors, Typo, Custom Rule Triggered)
 local invalid_config = {
     simulation_name = "Broken Setup",
-    time_stpe = 0.01, -- Typo in key! ('time_stpe' instead of 'time_step')
-    max_steps = "10000", -- String instead of integer (strict typing!)
-    physics = {
-        dimension = 4, -- Exceeds max 3
-        fluid = {
-            density = -5.0 -- Less than min 0.0 (viscosity is also missing!)
-        }
+    time_stpe = 0.01, -- Typo in key! ('time_stpe')
+    max_steps = 10000,
+    boundary_conditions = {
+        { name = "inlet", type = "invalid_bc_type", value = 1.0 }, -- Bad enum in array [1]
+        { name = "outlet", type = "neumann" } -- Missing 'value' in array [2]
     },
     solver = {
-        method = "super_solver", -- Invalid enum value
-        tolerance = 1e-20 -- Less than min 1e-15
+        method = "gmres",
+        tolerance = 0.01 -- Fails custom precision check (> 1e-3)
     }
 }
 
 -- Run Demos
-run_demo("Scenario 1: Valid Full Configuration", valid_config)
-run_demo("Scenario 2: Valid Minimal Configuration (Optional Parents Omitted)", minimal_valid_config)
-run_demo("Scenario 3: Invalid Configuration (Errors Accumulated)", invalid_config)
+run_demo("Scenario 1: Valid Full Configuration (With Arrays)", valid_config)
+run_demo("Scenario 2: Invalid Configuration (Array & Custom Errors)", invalid_config)
+
+-- Scenario 3: Auto-Generate Schema Documentation
+print_header("Scenario 3: Auto-Generated Markdown Schema Documentation")
+local markdown_docs = validator.to_markdown(hpc_schema, "HPC Simulation Parameter Reference")
+print(markdown_docs)
