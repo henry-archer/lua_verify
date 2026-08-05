@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "User Account Schema",
+  "description": "Validation schema for user registration data",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "username": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 20,
+      "pattern": "^[a-zA-Z0-9_]+$"
+    },
+    "email": {
+      "type": "string",
+      "format": "email"
+    },
+    "age": {
+      "type": "integer",
+      "minimum": 18,
+      "maximum": 120
+    },
+    "role": {
+      "type": "string",
+      "enum": ["admin", "user", "guest", "moderator"]
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true,
+      "minItems": 1
+    },
+    "address": {
+      "type": "object",
+      "properties": {
+        "street": { "type": "string" },
+        "city": { "type": "string" },
+        "zipcode": { "type": "string", "pattern": "^\\d{5}$" }
+      },
+      "required": ["street", "city", "zipcode"],
+      "additionalProperties": false
+    }
+  },
+  "required": ["id", "username", "email", "age", "role"],
+  "additionalProperties": false
+}

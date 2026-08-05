@@ -1,0 +1,14 @@
+{
+  "id": -5,
+  "username": "a",
+  "email": "not-an-email",
+  "age": 16,
+  "role": "superhero",
+  "tags": ["duplicate", "duplicate"],
+  "address": {
+    "street": "456 Main St",
+    "city": "Paris",
+    "zipcode": "ABC12"
+  },
+  "unauthorized_field": true
+}

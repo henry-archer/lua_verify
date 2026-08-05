@@ -1,0 +1,13 @@
+{
+  "id": 1001,
+  "username": "alex_programmer",
+  "email": "alex@example.org",
+  "age": 28,
+  "role": "admin",
+  "tags": ["c++17", "schema", "developer"],
+  "address": {
+    "street": "123 High St",
+    "city": "London",
+    "zipcode": "90210"
+  }
+}
